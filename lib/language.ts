@@ -15,6 +15,10 @@ export function localizedVerse(verse: Verse, language: Language): Verse {
   };
 }
 
+export function versePreview(verse: Verse, language: Language) {
+  return language === "en" ? englishVerses[verse.id][0] : verse.lines[0];
+}
+
 export function chapterLabel(start: number, language: Language) {
   return start === 91 ? textFor(language, "இனியவை கூறல்", "Speaking kindly")
     : textFor(language, "பயனில சொல்லாமை", "Avoiding idle speech");

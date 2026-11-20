@@ -33,7 +33,8 @@ export const chapters = [
 ];
 
 export const verses: Verse[] = entries;
-export const byId = (id: number) => verses.find((verse) => verse.id === id);
+const versesById = new Map(verses.map((verse) => [verse.id, verse]));
+export const byId = (id: number) => versesById.get(id);
 export const chapterOf = (id: number) =>
   chapters.find(({ start, end }) => id >= start && id <= end);
 export const verseHref = (id: number, language: Language = "ta") => `/?kural=${id}${language === "en" ? "&lang=en" : ""}`;
@@ -44,16 +45,27 @@ export function normalize(text: string) {
     .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ").trim();
 }
 
+const searchIndex: Partial<Record<Language, { verse: Verse; text: string }[]>> = {};
+
+function searchableVerse(verse: Verse, language: Language) {
+  const localized = localizedVerse(verse, language);
+  const chapter = chapterOf(verse.id);
+  const fields = [
+    verse.lines.join(" "), verse.alternate.join(" "), verse.summary, localized.summary,
+    chapter?.label ?? "", chapter ? chapterLabel(chapter.start, language) : "",
+    ...verse.tags, ...localized.gloss.flatMap(({ phrase, meaning }) => [phrase, meaning]),
+  ];
+  // Normalized queries cannot include the separator, so matches stay within one field.
+  return { verse, text: fields.map(normalize).join("\0") };
+}
+
 export function searchVerses(text: string, language: Language = "ta") {
   const query = normalize(text);
   if (!query) return verses;
   const numeric = query.match(/^(?:குறள்\s+|kural\s+)?(\d+)$/u);
   if (numeric) return verses.filter(({ id }) => String(id).startsWith(numeric[1]));
-  return verses.filter((v) => [v.lines.join(" "), v.alternate.join(" "), v.summary,
-    chapterOf(v.id)?.label ?? "", chapterLabel(chapterOf(v.id)!.start, language),
-    localizedVerse(v, language).summary, ...v.tags,
-    ...localizedVerse(v, language).gloss.flatMap((g) => [g.phrase, g.meaning])]
-    .some((term) => normalize(term).includes(query)));
+  const index = searchIndex[language] ??= verses.map((verse) => searchableVerse(verse, language));
+  return index.filter(({ text }) => text.includes(query)).map(({ verse }) => verse);
 }
 
 export function evidenceFor(v: Verse, kind: "text" | "p" | "m", language: Language = "ta") {
