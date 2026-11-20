@@ -31,7 +31,11 @@ export const VerseLibrary = memo(function VerseLibrary({ verseId, language, onNa
           onChange={(event) => setSearch(event.target.value)}
         />
       </label>
-      {!matches.length && <p className="small" role="status">{t("பொருந்தும் குறள் இல்லை.", "No matching verses.")}</p>}
+      <p className={search && !matches.length ? "small" : "sr-only"} role="status">
+        {search.trim() && (matches.length
+          ? t(`பொருந்தும் குறள்கள்: ${matches.length}`, `${matches.length} matching verses`)
+          : t("பொருந்தும் குறள் இல்லை.", "No matching verses."))}
+      </p>
       {chapters.map((chapter) => {
         const entries = matches.filter(({ id }) => id >= chapter.start && id <= chapter.end);
         return entries.length > 0 && (
