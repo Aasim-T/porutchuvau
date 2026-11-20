@@ -1,0 +1,32 @@
+# Porutchuvadu
+
+Porutchuvadu helps students understand classical Tamil through bilingual explanations and inspectable evidence. The text-only edition covers 20 Tirukkural couplets about speaking kindly and avoiding idle speech.
+
+## Run locally
+
+Use Node.js 22.13 or later.
+
+```sh
+npm run install:ci
+npm run dev
+```
+
+The development server prints the local address. Open `/?kural=100&lang=en` for the English view or use the language switch. The original couplets remain in Tamil.
+
+## Try it
+
+1. Open Kural 100. Select the Tamil phrase for ripe fruit and ask what it means in context.
+2. Compare Kural 100 and 200. The response connects the verses and explains how their advice differs.
+3. Open Kural 91 and compare the two commentary notes. In each source link, the verse number matches that edition.
+
+## Answer modes and privacy
+
+The default demo uses bundled notes and curated comparisons. It supports common passage, phrase, and comparison questions. It shows an evidence limit when the small collection cannot help.
+
+An optional server-side model can answer a wider range of typed questions. Set `OPENAI_API_KEY` as a runtime secret, or use an untracked `.dev.vars` for local Worker testing. Open `/signin-with-chatgpt?return_to=%2F` on the local preview to use the development sign-in. The authenticated route sends the question and source evidence, checks returned citation IDs against the corpus, and falls back to notes when the provider is unavailable. The app does not store conversations.
+
+## Checks and sources
+
+Run `npm test` for bilingual search, explanations, edition-specific citations, comparisons, and evidence limits. Run `npm run build` for the production build.
+
+The commentary notes, glosses, and explanations are editorial drafts. The source links lead to Project Madurai's editions for [Parimelalagar](https://www.projectmadurai.org/pm_etexts/utf8/pmuni0450_01.html) and [Manakkudavar](https://www.projectmadurai.org/pm_etexts/utf8/pmuni0650.html).
