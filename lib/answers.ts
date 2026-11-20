@@ -70,7 +70,11 @@ function parallel(from: number, to: number, language: Language): Passage | undef
 }
 
 export function mentionedIds(text: string) {
-  return [...new Set((normalize(text).match(/\b\d{1,4}\b/g) ?? []).map(Number))];
+  return idsInNormalizedText(normalize(text));
+}
+
+function idsInNormalizedText(text: string) {
+  return [...new Set((text.match(/\b\d{1,4}\b/g) ?? []).map(Number))];
 }
 
 export function isComparison(text: string) {
@@ -78,7 +82,7 @@ export function isComparison(text: string) {
 }
 
 export function citationFor(id: string) {
-  const match = /^(\d+):(text|p|m)$/.exec(id);
+  const match = /^([1-9]\d*):(text|p|m)$/.exec(id);
   const verse = match && byId(Number(match[1]));
   if (!verse || !match) return;
   const kind = match[2] as "text" | "p" | "m";
@@ -96,13 +100,20 @@ export function outside(language: Language = "ta"): Answer {
 }
 
 export function fromNotes(q: Question): Answer {
-  const ids = mentionedIds(q.text);
+  const question = normalize(q.text);
+  const ids = idsInNormalizedText(question);
   if (ids.some((id) => !byId(id))) return outside(q.language);
   const original = byId(q.verseId);
-  const question = normalize(q.text);
   const compare = isComparison(question);
-  const source = ids.length === 1 && !compare ? byId(ids[0]) : original;
   const language = q.language ?? "ta";
+  const followUp = !ids.length && /\b(?:that|the other) (?:verse|kural)\b|(?:அந்த|மற்ற)க்? குறள்/iu.test(question);
+  const recent = followUp ? [...new Set(q.recent.filter((id) => id !== q.verseId && byId(id)))] : [];
+  if (recent.length > 1) {
+    const choices = recent.join(", ");
+    return response(textFor(language, `எந்தக் குறள் (${choices}) பற்றிக் கேட்கிறீர்கள்?`, `Which verse do you mean: Kural ${choices}?`),
+      { status: "clarify" });
+  }
+  const source = ids.length === 1 && !compare ? byId(ids[0]) : recent.length ? byId(recent[0]) : original;
   if (!source) return outside(language);
   const verse = localizedVerse(source, language);
   const citations = [`${verse.id}:text`, `${verse.id}:p`, `${verse.id}:m`];
@@ -115,16 +126,20 @@ export function fromNotes(q: Question): Answer {
     const explicit = ids.filter((id) => id !== first);
     const targets = explicit.length ? explicit : first === 100 ? [200, 99, 96] : [100, 97, 192];
     const passages = targets.flatMap((id) => parallel(first, id, language) ?? []);
-    if (!passages.length) return outside(language);
+    if (!passages.length || (explicit.length && passages.length !== explicit.length)) return outside(language);
     const summary = passages.length === 1
       ? textFor(language, `குறள் ${first} உடன் குறள் ${passages[0].id}-ஐ ஒப்பிடலாம்.`, `Compare Kural ${first} with Kural ${passages[0].id}.`) + ` ${passages[0].limit}`
       : textFor(language, "இவற்றை ஒப்பிட்டுப் பார்த்தால், நல்ல பேச்சைத் தேர்ந்தெடுப்பதற்கான வெவ்வேறு காரணங்கள் தெரியும்.", "These passages give different reasons for choosing your words carefully.");
     return response(summary, { citations: [`${first}:text`, ...passages.map(({ id }) => `${id}:text`)], passages });
   }
-  const gloss = verse.gloss.find(({ phrase }) => normalize(phrase) === normalize(q.selection))
-    ?? verse.gloss.find(({ phrase }) => normalize(phrase).length > 1 && question.includes(normalize(phrase)));
+  const selection = verse.id === q.verseId ? normalize(q.selection) : "";
+  const gloss = (selection ? verse.gloss.find(({ phrase }) => normalize(phrase) === selection) : undefined)
+    ?? verse.gloss.find(({ phrase }) => {
+      const term = normalize(phrase);
+      return term.length > 1 && question.includes(term);
+    });
   if (gloss) return response(`${gloss.phrase} — ${gloss.meaning}. ${verse.summary}`, { citations });
-  if (/அர்த்தம்|பொருள்|விளக்|என்ன சொல்|meaning|explain|what does/iu.test(question)) {
+  if (followUp || /அர்த்தம்|பொருள்|விளக்|என்ன சொல்|meaning|explain|what does/iu.test(question)) {
     return response(verse.summary, { citations });
   }
   return outside(language);

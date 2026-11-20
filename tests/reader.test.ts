@@ -3,6 +3,8 @@ import test from "node:test";
 import { fromNotes, selectedText, type Question } from "../lib/answers";
 import { byId, evidenceFor, searchVerses, verses } from "../lib/corpus";
 import { localizedVerse } from "../lib/language";
+import { readQuestion } from "../lib/ask-request";
+import { validateModelAnswer } from "../lib/model-answer";
 
 function ask(text: string, overrides: Partial<Question> = {}) {
   return fromNotes({ text, verseId: 100, selection: "", recent: [], language: "en", ...overrides });
@@ -53,4 +55,55 @@ test("playback requests receive no playback action in the text reader", () => {
   const result = ask("Read aloud Kural 100");
   assert.equal(result.status, "insufficient");
   assert.equal("playId" in result, false);
+});
+
+test("indexed search retains both languages and field boundaries", () => {
+  const verse = byId(100)!;
+  for (const language of ["en", "ta", "en"] as const) {
+    assert.deepEqual(searchVerses("குறள் ௧௦", language).map(({ id }) => id), [100]);
+    const crossingFields = `${verse.lines[1].split(" ").at(-1)} ${verse.alternate[0].split(" ")[0]}`;
+    assert.ok(!searchVerses(crossingFields, language).includes(verse));
+  }
+});
+
+test("follow-up questions use the cited verse or ask the learner to choose", () => {
+  assert.equal(ask("What does that verse mean?", { recent: [200] }).citations[0], "200:text");
+  const ambiguous = ask("What does the other verse mean?", { recent: [200, 99] });
+  assert.equal(ambiguous.status, "clarify");
+  assert.deepEqual(ambiguous.citations, []);
+  assert.equal(ask("Compare Kural 100, 200 and 191").status, "insufficient");
+});
+
+function post(body: BodyInit, type = "application/json") {
+  return new Request("https://reader.test/api/ask", {
+    method: "POST", headers: { "Content-Type": type }, body,
+  });
+}
+
+test("question requests validate media type, byte size, input, and verse context", async () => {
+  assert.equal((await readQuestion(post("{}", "application/json-other"))).status, 415);
+  assert.equal((await readQuestion(post(" ".repeat(8193)))).status, 413);
+  assert.equal((await readQuestion(post("{"))).status, 400);
+  assert.equal((await readQuestion(post(JSON.stringify({ text: "Explain", verseId: 500 })))).status, 400);
+  const result = await readQuestion(post(JSON.stringify({
+    text: "  பொருள் என்ன?  ", verseId: 100, selection: "கனி", recent: [200, 200, 500],
+  }), "Application/JSON; charset=UTF-8"));
+  assert.deepEqual(result.question, {
+    text: "பொருள் என்ன?", verseId: 100, selection: "கனி", recent: [200], language: "ta",
+  });
+});
+
+test("model comparisons require every named verse and keep only verbatim highlights", () => {
+  const card = {
+    id: 200, link: "கருத்து", connection: "Speaking", limit: "Usefulness",
+    highlights: ["பயனுடைய", "invented", "பயனுடைய"],
+  };
+  const output = {
+    status: "answer", text: "Both discuss speech", citations: ["100:text", "200:text"], passages: [card],
+  };
+  const validate = (value: unknown) => validateModelAnswer(value, [100, 200], "en");
+  assert.deepEqual(validate(output)?.passages[0].highlights, ["பயனுடைய"]);
+  assert.equal(validate({ ...output, citations: ["100:text"], passages: [] }), undefined);
+  assert.equal(validate({ ...output, citations: ["100:text", "0200:text"] }), undefined);
+  assert.equal(validate({ ...output, passages: [card, card] }), undefined);
 });

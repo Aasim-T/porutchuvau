@@ -182,7 +182,10 @@ export default function Reader({ initialId, initialLanguage, hasServerAnswers }:
               className="line-picker"
               aria-pressed={selection === line} onClick={() => pick(line)}>{line}</button>)}
           </blockquote>
-          <a className="ask-link" href="#question">{t("குறளைப் பற்றிக் கேள்", "Ask about this verse")}</a>
+          <div className="mobile-jumps">
+            <a href="#question">{t("குறளைப் பற்றிக் கேள்", "Ask about this verse")}</a>
+            <a href="#library">{t("குறள்களைத் தேடு", "Find a verse")}</a>
+          </div>
         </article>
 
         <section className="card">
